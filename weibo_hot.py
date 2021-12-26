@@ -1,19 +1,12 @@
 # coding: utf-8
 import os
-import sys
 import time
 import requests
 import webbrowser
-from lxml import etree
+from urllib import parse
 
-url = 'https://s.weibo.com/top/summary'
-params = {
-    'cate': 'realtimehot',
-}
-headers = {
-    'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/87.0.4280.67 Safari/537.36'
-}
-
+url = 'https://weibo.com/ajax/statuses/hot_band'
+hot_url_list = [None] * 55  # 内存优化
 hot_color = {
     '爆': '\033[1;37;41m',
     '沸': '\033[1;31m',
@@ -21,29 +14,33 @@ hot_color = {
     '新': '\033[0;32m',
     '无': '\033[37m',
 }
-hot_dict = {}
 
 
 def rush_hot():
+    """ 刷新热搜列表 """
     os.system('clear')
     print(time.strftime('%Y年%m月%d日%H:%M:%S', time.localtime()), '实时微博热搜榜Top50')
-    hot_num = 0
-    html_text = requests.get(url=url, params=params, headers=headers).text
-    hot_list = etree.HTML(html_text).xpath('//div[@id="pl_top_realtimehot"]/table/tbody/tr')
 
-    for hot in hot_list[1:]:
-        hot_kind = hot.xpath('./td[@class="td-03"]/i/text()')[0] if hot.xpath('./td[@class="td-03"]/i/text()') else '无'
-        hot_title = hot.xpath('./td[@class="td-02"]/a/text()')[0]
+    global hot_url_list
+    hot_num = 0
+    html_text = requests.get(url=url).json()
+    band_list = html_text.get('data').get('band_list')
+
+    for band in band_list:
+        title = band.get('note')
+        topic_flag = '%23' if band.get('topic_flag') else ''
+        title_url = f'https://s.weibo.com/weibo?q={topic_flag}{parse.quote(title)}{topic_flag}'
+        label_name = band.get('label_name')
+
         # 过滤广告
-        if hot_kind == '商':
+        if band.get('ad_channel'):
             continue
-        # 跳过推广
-        if not hot.xpath('./td[@class="td-01 ranktop"]/text()')[0].isdigit():
-            continue
+
+        # 构建全局热搜链接列表
+        hot_url_list[hot_num] = title_url
+
         hot_num += 1
-        hot_url = 'https://s.weibo.com' + hot.xpath('./td[@class="td-02"]/a/@href')[0]
-        hot_dict[str(hot_num)] = hot_url
-        print(f"{hot_color.get(hot_kind)}{hot_num}.{hot_title}\033[0m", end='\n' if hot == hot_list[-1] else '｜')
+        print(f"{hot_color.get(label_name, '')}{hot_num}.{title}\033[0m", end='\n' if hot_num == 50 else '｜')
 
 
 if __name__ == '__main__':
@@ -57,6 +54,10 @@ if __name__ == '__main__':
             break
         else:
             try:
-                webbrowser.open(hot_dict.get(cmd))
+                webbrowser.open(hot_url_list[int(cmd) - 1])
             except AttributeError:
+                pass
+            except ValueError:
+                pass
+            except IndexError:
                 pass
